@@ -129,7 +129,15 @@ def main() -> None:
             print(f"  Migrated {table}: {count} rows")
 
         with pg_conn.cursor() as cur:
-            cur.execute("SELECT reset_serial_sequences()")
+            for table in TABLES_IN_ORDER:
+                cur.execute(
+                    f"""
+                    SELECT setval(
+                        pg_get_serial_sequence('{table}', 'id'),
+                        COALESCE((SELECT MAX(id) FROM {table}), 1)
+                    )
+                    """
+                )
 
         pg_conn.commit()
         print()

@@ -25,6 +25,7 @@ export default function DeckDetailPage() {
   const [showCardForm, setShowCardForm] = useState(false);
   const [cardForm, setCardForm] = useState({ front: '', back: '', phonetic: '', example: '', tags: '' });
   const [deleteCardId, setDeleteCardId] = useState(null);
+  const [cardError, setCardError] = useState('');
   const [importPreviewData, setImportPreviewData] = useState(null);
   const fileRef = useRef();
 
@@ -43,6 +44,7 @@ export default function DeckDetailPage() {
 
   const handleCreateCard = async (e) => {
     e.preventDefault();
+    setCardError('');
     try {
       await createCard(id, cardForm);
       setShowCardForm(false);
@@ -55,6 +57,13 @@ export default function DeckDetailPage() {
           setShowCardForm(false);
           load();
         }
+        return;
+      }
+      const detail = err.response?.data?.detail;
+      if (err.response?.status === 403) {
+        setCardError('Không có quyền thêm thẻ vào bộ từ này (chỉ chủ bộ từ mới được thêm).');
+      } else {
+        setCardError(detail || 'Không tạo được thẻ. Vui lòng thử lại.');
       }
     }
   };
@@ -172,6 +181,11 @@ export default function DeckDetailPage() {
               onChange={(e) => setCardForm({ ...cardForm, example: e.target.value })}
               className="col-span-2 rounded-lg border px-4 py-2 dark:border-slate-600 dark:bg-slate-700" rows={2} />
           </div>
+          {cardError && (
+            <p className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-600 dark:bg-red-900/30 dark:text-red-300">
+              {cardError}
+            </p>
+          )}
           <button type="submit" className="mt-3 rounded-lg bg-indigo-600 px-4 py-2 text-sm text-white">Lưu</button>
         </form>
       )}
