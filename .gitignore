@@ -1,0 +1,43 @@
+# Secrets & local env (never commit)
+.env
+.env.*
+!.env.example
+backend/.env
+frontend/.env
+.streamlit/secrets.toml
+
+# Database & backups
+*.db
+backup_local/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.Python
+venv/
+.venv/
+backend/venv/
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Node / frontend build
+node_modules/
+frontend/node_modules/
+dist/
+frontend/dist/
+.vite/
+*.local
+
+# IDE & OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Logs
+*.log
+npm-debug.log*
