@@ -1,5 +1,6 @@
-import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import Logo from './Logo';
 
 const navClass = ({ isActive }) =>
   `px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
@@ -21,9 +22,7 @@ export default function Layout() {
     <div className="min-h-screen">
       <header className="border-b border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
-          <Link to="/" className="text-lg font-bold text-indigo-600 dark:text-indigo-400">
-            English Flashcard
-          </Link>
+          <Logo to="/" />
           <nav className="flex items-center gap-1">
             <NavLink to="/" end className={navClass}>Dashboard</NavLink>
             <NavLink to="/decks" className={navClass}>Bộ từ</NavLink>

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import Logo from '../components/Logo';
 
 export default function LoginPage() {
   const [username, setUsername] = useState('');
@@ -34,9 +35,9 @@ export default function LoginPage() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-indigo-50 to-white px-4 dark:from-slate-900 dark:to-slate-800">
       <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-8 shadow-xl dark:border-slate-700 dark:bg-slate-800">
-        <div className="mb-8 text-center">
-          <h1 className="text-2xl font-bold text-indigo-600 dark:text-indigo-400">English Flashcard</h1>
-          <p className="mt-1 text-sm text-slate-500">Học từ vựng tiếng Anh hiệu quả</p>
+        <div className="mb-8 flex flex-col items-center text-center">
+          <Logo to={null} size="lg" className="justify-center" />
+          <p className="mt-3 text-sm text-slate-500">Học từ vựng tiếng Anh hiệu quả</p>
         </div>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
