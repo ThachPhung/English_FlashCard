@@ -76,7 +76,8 @@ CREATE TABLE study_sessions (
     total_cards INTEGER NOT NULL DEFAULT 0,
     completed_cards INTEGER NOT NULL DEFAULT 0,
     duration_seconds INTEGER NOT NULL DEFAULT 0,
-    status session_status NOT NULL DEFAULT 'active'
+    status session_status NOT NULL DEFAULT 'active',
+    requeue_pending TEXT DEFAULT '{}'
 );
 
 CREATE INDEX ix_study_sessions_user_id ON study_sessions(user_id);
@@ -112,7 +113,8 @@ CREATE TABLE review_logs (
     new_due_at TIMESTAMPTZ,
     response_time_ms INTEGER,
     reviewed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    is_undone BOOLEAN NOT NULL DEFAULT FALSE
+    is_undone BOOLEAN NOT NULL DEFAULT FALSE,
+    requeue_snapshot TEXT
 );
 
 CREATE INDEX ix_review_logs_user_id ON review_logs(user_id);

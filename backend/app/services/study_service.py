@@ -1,3 +1,5 @@
+import json
+import random
 from datetime import datetime, timezone
 
 from sqlalchemy import or_
@@ -12,6 +14,24 @@ from app.models.review_log import ReviewLog
 from app.models.session import SessionStatus, StudySession
 from app.models.user import User, UserSettings
 from app.services.scheduler_service import apply_rating
+
+AGAIN_REQUEUE_COUNT = 4
+HARD_REQUEUE_COUNT = 3
+
+
+def _load_requeue_pending(session: StudySession) -> dict[int, int]:
+    if not session.requeue_pending:
+        return {}
+    data = json.loads(session.requeue_pending)
+    return {int(k): int(v) for k, v in data.items()}
+
+
+def _save_requeue_pending(session: StudySession, pending: dict[int, int]) -> None:
+    session.requeue_pending = json.dumps(pending)
+
+
+def _requeue_card_ids(pending: dict[int, int]) -> set[int]:
+    return {card_id for card_id, count in pending.items() if count > 0}
 
 
 def _get_or_create_progress(db: Session, user_id: int, card_id: int) -> UserCardProgress:
@@ -131,9 +151,32 @@ def _session_done_card_ids(db: Session, session_id: int) -> set[int]:
     logs = (
         db.query(ReviewLog)
         .filter(ReviewLog.session_id == session_id, ReviewLog.is_undone == False)
+        .order_by(ReviewLog.reviewed_at.asc())
         .all()
     )
-    return {log.card_id for log in logs}
+    latest: dict[int, ReviewLog] = {}
+    for log in logs:
+        latest[log.card_id] = log
+    return {
+        card_id
+        for card_id, log in latest.items()
+        if log.rating in (Rating.GOOD, Rating.EASY)
+    }
+
+
+def _session_exclude_card_ids(db: Session, session: StudySession) -> set[int]:
+    pending = _load_requeue_pending(session)
+    return _session_done_card_ids(db, session.id) | _requeue_card_ids(pending)
+
+
+def _count_remaining_cards(
+    db: Session, user: User, session: StudySession, pending: dict[int, int] | None = None
+) -> int:
+    if pending is None:
+        pending = _load_requeue_pending(session)
+    exclude = _session_done_card_ids(db, session.id) | _requeue_card_ids(pending)
+    main_queue = get_study_queue(db, user, session.deck_id, exclude_card_ids=exclude)
+    return len(main_queue) + sum(pending.values())
 
 
 def create_session(db: Session, user: User, deck_id: int | None = None) -> StudySession:
@@ -161,11 +204,34 @@ def create_session(db: Session, user: User, deck_id: int | None = None) -> Study
 
 
 def get_session_next(db: Session, session: StudySession, user: User) -> tuple[Card, UserCardProgress] | None:
-    done_ids = _session_done_card_ids(db, session.id)
-    queue = get_study_queue(db, user, session.deck_id, exclude_card_ids=done_ids)
-    if not queue:
+    pending = _load_requeue_pending(session)
+    exclude = _session_done_card_ids(db, session.id) | _requeue_card_ids(pending)
+    main_queue = get_study_queue(db, user, session.deck_id, exclude_card_ids=exclude)
+
+    requeue_ids = [card_id for card_id, count in pending.items() if count > 0]
+    if not main_queue and not requeue_ids:
         return None
-    return queue[0]
+
+    pick_requeue = False
+    if requeue_ids:
+        if not main_queue:
+            pick_requeue = True
+        else:
+            pick_requeue = random.random() < len(requeue_ids) / (len(requeue_ids) + len(main_queue))
+
+    if pick_requeue:
+        card_id = random.choice(requeue_ids)
+        pending[card_id] -= 1
+        _save_requeue_pending(session, pending)
+        db.commit()
+
+        card = db.query(Card).filter(Card.id == card_id, Card.is_deleted == False).first()
+        if not card:
+            return get_session_next(db, session, user)
+        progress = _get_or_create_progress(db, user.id, card_id)
+        return card, progress
+
+    return main_queue[0]
 
 
 def answer_card(
@@ -181,17 +247,11 @@ def answer_card(
     if not card:
         raise ValueError("Thẻ không tồn tại")
 
-    existing = (
-        db.query(ReviewLog)
-        .filter(
-            ReviewLog.session_id == session.id,
-            ReviewLog.card_id == card_id,
-            ReviewLog.is_undone == False,
-        )
-        .first()
-    )
-    if existing:
-        raise ValueError("Thẻ này đã được trả lời trong phiên học")
+    if card_id in _session_done_card_ids(db, session.id):
+        raise ValueError("Thẻ này đã hoàn thành trong phiên học")
+
+    pending = _load_requeue_pending(session)
+    requeue_snapshot = json.dumps({"pending": pending, "total_cards": session.total_cards})
 
     progress = _get_or_create_progress(db, user.id, card_id)
     old_interval = progress.interval_days
@@ -210,14 +270,27 @@ def answer_card(
         old_due_at=old_due_at,
         new_due_at=progress.due_at,
         response_time_ms=response_time_ms,
+        requeue_snapshot=requeue_snapshot,
     )
     db.add(log)
+
+    if rating == Rating.AGAIN:
+        old_count = pending.get(card_id, 0)
+        pending[card_id] = AGAIN_REQUEUE_COUNT
+        session.total_cards += max(0, AGAIN_REQUEUE_COUNT - old_count)
+    elif rating == Rating.HARD:
+        old_count = pending.get(card_id, 0)
+        pending[card_id] = HARD_REQUEUE_COUNT
+        session.total_cards += max(0, HARD_REQUEUE_COUNT - old_count)
+    elif rating in (Rating.GOOD, Rating.EASY):
+        removed = pending.pop(card_id, 0)
+        session.total_cards -= removed
+
+    _save_requeue_pending(session, pending)
     session.completed_cards += 1
     db.commit()
 
-    done_ids = _session_done_card_ids(db, session.id)
-    remaining_queue = get_study_queue(db, user, session.deck_id, exclude_card_ids=done_ids)
-    remaining = len(remaining_queue)
+    remaining = _count_remaining_cards(db, user, session, pending)
 
     return {
         "progress": {
@@ -256,6 +329,12 @@ def undo_last_answer(db: Session, session: StudySession, user: User) -> bool:
         progress.status = CardStatus.LEARNING if log.rating == Rating.AGAIN else CardStatus.REVIEW
         if log.old_interval >= 30:
             progress.status = CardStatus.MASTERED
+
+    if log.requeue_snapshot:
+        snapshot = json.loads(log.requeue_snapshot)
+        restored_pending = {int(k): int(v) for k, v in snapshot["pending"].items()}
+        _save_requeue_pending(session, restored_pending)
+        session.total_cards = snapshot["total_cards"]
 
     log.is_undone = True
     session.completed_cards = max(0, session.completed_cards - 1)
@@ -297,6 +376,18 @@ def finish_session(db: Session, session: StudySession) -> dict:
 
 
 def suspend_card(db: Session, user_id: int, card_id: int) -> None:
+    active = (
+        db.query(StudySession)
+        .filter(StudySession.user_id == user_id, StudySession.status == SessionStatus.active)
+        .first()
+    )
+    if active:
+        pending = _load_requeue_pending(active)
+        removed = pending.pop(card_id, 0)
+        if removed:
+            active.total_cards -= removed
+            _save_requeue_pending(active, pending)
+
     progress = _get_or_create_progress(db, user_id, card_id)
     progress.status = CardStatus.SUSPENDED
     db.commit()

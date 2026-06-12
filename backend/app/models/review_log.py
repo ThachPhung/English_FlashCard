@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, Enum, Float, ForeignKey, Integer
+from sqlalchemy import DateTime, Enum, Float, ForeignKey, Integer, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -24,3 +24,4 @@ class ReviewLog(Base):
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
     is_undone: Mapped[bool] = mapped_column(default=False)
+    requeue_snapshot: Mapped[str | None] = mapped_column(Text, nullable=True)
