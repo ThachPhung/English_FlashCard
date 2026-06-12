@@ -34,6 +34,56 @@ def _requeue_card_ids(pending: dict[int, int]) -> set[int]:
     return {card_id for card_id, count in pending.items() if count > 0}
 
 
+def _load_session_card_ids(session: StudySession) -> list[int]:
+    if not session.session_card_ids:
+        return []
+    return [int(card_id) for card_id in json.loads(session.session_card_ids)]
+
+
+def _latest_session_logs(db: Session, session_id: int) -> dict[int, ReviewLog]:
+    logs = (
+        db.query(ReviewLog)
+        .filter(ReviewLog.session_id == session_id, ReviewLog.is_undone == False)
+        .order_by(ReviewLog.reviewed_at.asc())
+        .all()
+    )
+    latest: dict[int, ReviewLog] = {}
+    for log in logs:
+        latest[log.card_id] = log
+    return latest
+
+
+def _session_done_card_ids(db: Session, session_id: int) -> set[int]:
+    latest = _latest_session_logs(db, session_id)
+    return {
+        card_id
+        for card_id, log in latest.items()
+        if log.rating in (Rating.GOOD, Rating.EASY)
+    }
+
+
+def _session_needs_good_ids(db: Session, session_id: int) -> set[int]:
+    latest = _latest_session_logs(db, session_id)
+    return {
+        card_id
+        for card_id, log in latest.items()
+        if log.rating in (Rating.AGAIN, Rating.HARD)
+    }
+
+
+def _requeue_candidates(pending: dict[int, int], needs_good: set[int]) -> list[int]:
+    candidates = [card_id for card_id, count in pending.items() if count > 0]
+    for card_id in needs_good:
+        if card_id not in candidates:
+            candidates.append(card_id)
+    return candidates
+
+
+def _requeue_remaining_count(pending: dict[int, int], needs_good: set[int]) -> int:
+    exhausted = sum(1 for card_id in needs_good if pending.get(card_id, 0) <= 0)
+    return sum(pending.values()) + exhausted
+
+
 def _get_or_create_progress(db: Session, user_id: int, card_id: int) -> UserCardProgress:
     progress = (
         db.query(UserCardProgress)
@@ -147,26 +197,31 @@ def get_study_queue(
     return queue
 
 
-def _session_done_card_ids(db: Session, session_id: int) -> set[int]:
-    logs = (
-        db.query(ReviewLog)
-        .filter(ReviewLog.session_id == session_id, ReviewLog.is_undone == False)
-        .order_by(ReviewLog.reviewed_at.asc())
-        .all()
-    )
-    latest: dict[int, ReviewLog] = {}
-    for log in logs:
-        latest[log.card_id] = log
-    return {
-        card_id
-        for card_id, log in latest.items()
-        if log.rating in (Rating.GOOD, Rating.EASY)
-    }
-
-
-def _session_exclude_card_ids(db: Session, session: StudySession) -> set[int]:
+def _get_session_main_queue(
+    db: Session, session: StudySession, user: User
+) -> list[tuple[Card, UserCardProgress]]:
     pending = _load_requeue_pending(session)
-    return _session_done_card_ids(db, session.id) | _requeue_card_ids(pending)
+    done_ids = _session_done_card_ids(db, session.id)
+    needs_good = _session_needs_good_ids(db, session.id)
+    exclude = done_ids | _requeue_card_ids(pending) | needs_good
+
+    card_ids = _load_session_card_ids(session)
+    if not card_ids:
+        return get_study_queue(db, user, session.deck_id, exclude_card_ids=exclude)
+
+    queue: list[tuple[Card, UserCardProgress]] = []
+    for card_id in card_ids:
+        if card_id in exclude:
+            continue
+        card = db.query(Card).filter(Card.id == card_id, Card.is_deleted == False).first()
+        if not card:
+            continue
+        progress = _get_or_create_progress(db, user.id, card_id)
+        if progress.status == CardStatus.SUSPENDED:
+            continue
+        queue.append((card, progress))
+    db.commit()
+    return queue
 
 
 def _count_remaining_cards(
@@ -174,9 +229,9 @@ def _count_remaining_cards(
 ) -> int:
     if pending is None:
         pending = _load_requeue_pending(session)
-    exclude = _session_done_card_ids(db, session.id) | _requeue_card_ids(pending)
-    main_queue = get_study_queue(db, user, session.deck_id, exclude_card_ids=exclude)
-    return len(main_queue) + sum(pending.values())
+    needs_good = _session_needs_good_ids(db, session.id)
+    main_queue = _get_session_main_queue(db, session, user)
+    return len(main_queue) + _requeue_remaining_count(pending, needs_good)
 
 
 def create_session(db: Session, user: User, deck_id: int | None = None) -> StudySession:
@@ -190,12 +245,14 @@ def create_session(db: Session, user: User, deck_id: int | None = None) -> Study
         active.ended_at = datetime.now(timezone.utc)
 
     queue = get_study_queue(db, user, deck_id)
+    card_ids = [card.id for card, _ in queue]
     session = StudySession(
         user_id=user.id,
         deck_id=deck_id,
         total_cards=len(queue),
         completed_cards=0,
         status=SessionStatus.active,
+        session_card_ids=json.dumps(card_ids),
     )
     db.add(session)
     db.commit()
@@ -205,10 +262,10 @@ def create_session(db: Session, user: User, deck_id: int | None = None) -> Study
 
 def get_session_next(db: Session, session: StudySession, user: User) -> tuple[Card, UserCardProgress] | None:
     pending = _load_requeue_pending(session)
-    exclude = _session_done_card_ids(db, session.id) | _requeue_card_ids(pending)
-    main_queue = get_study_queue(db, user, session.deck_id, exclude_card_ids=exclude)
+    needs_good = _session_needs_good_ids(db, session.id)
+    main_queue = _get_session_main_queue(db, session, user)
 
-    requeue_ids = [card_id for card_id, count in pending.items() if count > 0]
+    requeue_ids = _requeue_candidates(pending, needs_good)
     if not main_queue and not requeue_ids:
         return None
 
@@ -221,9 +278,10 @@ def get_session_next(db: Session, session: StudySession, user: User) -> tuple[Ca
 
     if pick_requeue:
         card_id = random.choice(requeue_ids)
-        pending[card_id] -= 1
-        _save_requeue_pending(session, pending)
-        db.commit()
+        if pending.get(card_id, 0) > 0:
+            pending[card_id] -= 1
+            _save_requeue_pending(session, pending)
+            db.commit()
 
         card = db.query(Card).filter(Card.id == card_id, Card.is_deleted == False).first()
         if not card:

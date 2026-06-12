@@ -89,6 +89,39 @@ def test_requeued_card_can_be_answered_again(db_session):
     assert card.id not in _load_requeue_pending(session)
 
 
+def test_session_continues_after_requeue_exhausted_without_good(db_session):
+    user = db_session.query(User).first()
+    deck = _create_deck_with_cards(db_session, user, 1)
+    session = create_session(db_session, user, deck.id)
+    card, _ = get_session_next(db_session, session, user)
+
+    answer_card(db_session, session, user, card.id, "AGAIN")
+    session.requeue_pending = json.dumps({card.id: 0})
+    db_session.commit()
+
+    next_item = get_session_next(db_session, session, user)
+    assert next_item is not None
+    assert next_item[0].id == card.id
+
+
+def test_session_shows_all_snapshotted_cards_even_after_daily_limit_hit(db_session):
+    user = db_session.query(User).first()
+    deck = _create_deck_with_cards(db_session, user, 4)
+    deck.new_cards_per_day = 4
+    db_session.commit()
+
+    session = create_session(db_session, user, deck.id)
+    assert session.total_cards == 4
+
+    for _ in range(4):
+        next_item = get_session_next(db_session, session, user)
+        assert next_item is not None
+        answer_card(db_session, session, user, next_item[0].id, "AGAIN")
+
+    next_item = get_session_next(db_session, session, user)
+    assert next_item is not None
+
+
 def test_undo_restores_requeue_state(db_session):
     user = db_session.query(User).first()
     deck = _create_deck_with_cards(db_session, user, 1)

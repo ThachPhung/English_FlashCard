@@ -77,7 +77,8 @@ CREATE TABLE study_sessions (
     completed_cards INTEGER NOT NULL DEFAULT 0,
     duration_seconds INTEGER NOT NULL DEFAULT 0,
     status session_status NOT NULL DEFAULT 'active',
-    requeue_pending TEXT DEFAULT '{}'
+    requeue_pending TEXT DEFAULT '{}',
+    session_card_ids TEXT DEFAULT '[]'
 );
 
 CREATE INDEX ix_study_sessions_user_id ON study_sessions(user_id);

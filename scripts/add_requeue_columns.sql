@@ -2,5 +2,8 @@
 ALTER TABLE study_sessions
     ADD COLUMN IF NOT EXISTS requeue_pending TEXT DEFAULT '{}';
 
+ALTER TABLE study_sessions
+    ADD COLUMN IF NOT EXISTS session_card_ids TEXT DEFAULT '[]';
+
 ALTER TABLE review_logs
     ADD COLUMN IF NOT EXISTS requeue_snapshot TEXT;

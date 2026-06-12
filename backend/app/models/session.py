@@ -28,3 +28,4 @@ class StudySession(Base):
     duration_seconds: Mapped[int] = mapped_column(Integer, default=0)
     status: Mapped[SessionStatus] = mapped_column(Enum(SessionStatus), default=SessionStatus.active)
     requeue_pending: Mapped[str | None] = mapped_column(Text, nullable=True, default="{}")
+    session_card_ids: Mapped[str | None] = mapped_column(Text, nullable=True, default="[]")
