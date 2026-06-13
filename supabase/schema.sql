@@ -77,6 +77,7 @@ CREATE TABLE study_sessions (
     completed_cards INTEGER NOT NULL DEFAULT 0,
     duration_seconds INTEGER NOT NULL DEFAULT 0,
     status session_status NOT NULL DEFAULT 'active',
+    study_mode VARCHAR(20) NOT NULL DEFAULT 'all',
     requeue_pending TEXT DEFAULT '{}',
     session_card_ids TEXT DEFAULT '[]'
 );

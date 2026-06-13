@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   finishSession,
   getNextCard,
@@ -21,8 +21,13 @@ function parseDeckId(raw) {
 
 export default function StudyPage() {
   const { deckId: deckIdParam } = useParams();
+  const [searchParams] = useSearchParams();
   const deckId = parseDeckId(deckIdParam);
-  const sessionKey = deckId ? `study_session_${deckId}` : 'study_session_all';
+  const studyMode = searchParams.get('mode') === 'new' ? 'new_only' : 'all';
+  const sessionKey = deckId
+    ? `study_session_${deckId}_${studyMode}`
+    : `study_session_all_${studyMode}`;
+  const isNewOnly = studyMode === 'new_only';
   const navigate = useNavigate();
   const [session, setSession] = useState(null);
   const [card, setCard] = useState(null);
@@ -63,11 +68,13 @@ export default function StudyPage() {
             setCard(next.data.current_card);
           }
         } else {
-          const res = await startSession(deckId);
+          const res = await startSession(deckId, studyMode);
           setSession(res.data);
           setCard(res.data.current_card);
           if (res.data.current_card) {
             localStorage.setItem(sessionKey, JSON.stringify({ id: res.data.id }));
+          } else if (isNewOnly) {
+            setError('Không còn từ mới để học. Hãy thêm từ hoặc chọn chế độ học tất cả.');
           }
         }
       } catch (err) {
@@ -80,7 +87,7 @@ export default function StudyPage() {
       }
     };
     init();
-  }, [deckId, deckIdParam, navigate, sessionKey]);
+  }, [deckId, deckIdParam, navigate, sessionKey, studyMode, isNewOnly]);
 
   const goToResult = (resultData) => {
     saveStudyResult(resultData, deckId);
@@ -200,6 +207,12 @@ export default function StudyPage() {
           Kết thúc phiên
         </button>
       </div>
+
+      {isNewOnly && (
+        <div className="mb-4 rounded-lg bg-blue-50 px-4 py-2 text-sm text-blue-800 dark:bg-blue-900/30 dark:text-blue-200">
+          Chế độ học từ mới — chỉ các từ chưa học, không trộn thẻ cần ôn.
+        </div>
+      )}
 
       {error && (
         <div className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-600 dark:bg-red-900/30">

@@ -50,12 +50,13 @@ def start_session(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    session = create_session(db, user, data.deck_id)
+    session = create_session(db, user, data.deck_id, mode=data.mode)
     next_item = get_session_next(db, session, user)
     current = _card_dict(next_item[0], next_item[1]) if next_item else None
     return SessionResponse(
         id=session.id,
         deck_id=session.deck_id,
+        mode=session.study_mode,
         status=session.status.value,
         total_cards=session.total_cards,
         completed_cards=session.completed_cards,
@@ -82,6 +83,7 @@ def next_card(
     return SessionResponse(
         id=session.id,
         deck_id=session.deck_id,
+        mode=session.study_mode,
         status=session.status.value,
         total_cards=session.total_cards,
         completed_cards=session.completed_cards,

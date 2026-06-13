@@ -223,7 +223,8 @@ async def import_confirm(
         raise HTTPException(status_code=400, detail=error)
 
     validated = validate_import_rows(db, deck_id, rows)
-    count = import_cards(db, deck_id, validated, skip_duplicates=skip_duplicates)
+    imported_ids = import_cards(db, deck_id, validated, skip_duplicates=skip_duplicates)
     deck.updated_at = datetime.now(timezone.utc)
     db.commit()
-    return {"imported": count, "message": f"Đã import {count} thẻ"}
+    count = len(imported_ids)
+    return {"imported": count, "card_ids": imported_ids, "message": f"Đã import {count} thẻ"}

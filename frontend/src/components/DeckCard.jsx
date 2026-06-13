@@ -48,11 +48,19 @@ export default function DeckCard({ deck }) {
         </div>
       </div>
       <div className="flex gap-2">
+        {deck.new_count > 0 && (
+          <Link
+            to={`/study/${deck.id}?mode=new`}
+            className="flex-1 rounded-lg border border-indigo-600 py-2 text-center text-sm font-medium text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/20"
+          >
+            Từ mới ({deck.new_count})
+          </Link>
+        )}
         <Link
           to={`/study/${deck.id}`}
           className="flex-1 rounded-lg bg-indigo-600 py-2 text-center text-sm font-medium text-white hover:bg-indigo-700"
         >
-          Học ngay
+          {deck.new_count > 0 ? 'Ôn tập' : 'Học ngay'}
         </Link>
         <Link
           to={`/decks/${deck.id}`}

@@ -2,6 +2,7 @@ import json
 
 from app.models.card import Card
 from app.models.deck import Deck, DeckVisibility
+from app.models.progress import CardStatus, UserCardProgress
 from app.models.user import User
 from app.services.study_service import (
     AGAIN_REQUEUE_COUNT,
@@ -9,6 +10,7 @@ from app.services.study_service import (
     _load_requeue_pending,
     answer_card,
     create_session,
+    get_new_cards_queue,
     get_session_next,
     undo_last_answer,
 )
@@ -135,3 +137,26 @@ def test_undo_restores_requeue_state(db_session):
     db_session.refresh(session)
     assert _load_requeue_pending(session) == {}
     assert session.total_cards == 1
+
+
+def test_new_only_session_excludes_review_cards(db_session):
+    user = db_session.query(User).first()
+    deck = _create_deck_with_cards(db_session, user, 3)
+    cards = db_session.query(Card).filter(Card.deck_id == deck.id).order_by(Card.id).all()
+
+    reviewed = UserCardProgress(
+        user_id=user.id,
+        card_id=cards[0].id,
+        status=CardStatus.REVIEW,
+        interval_days=1,
+    )
+    db_session.add(reviewed)
+    db_session.commit()
+
+    new_queue = get_new_cards_queue(db_session, user, deck.id)
+    assert len(new_queue) == 2
+    assert all(p.status == CardStatus.NEW for _, p in new_queue)
+
+    session = create_session(db_session, user, deck.id, mode="new_only")
+    assert session.total_cards == 2
+    assert session.study_mode == "new_only"

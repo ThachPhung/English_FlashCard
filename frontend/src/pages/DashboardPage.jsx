@@ -69,8 +69,16 @@ export default function DashboardPage() {
           <Link to="/decks" className="rounded-lg border border-slate-300 px-4 py-2 text-sm hover:bg-slate-50 dark:border-slate-600">
             Xem tất cả
           </Link>
+          {stats?.new_available > 0 && (
+            <Link
+              to="/study?mode=new"
+              className="rounded-lg border border-indigo-600 px-4 py-2 text-sm font-medium text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/20"
+            >
+              Học từ mới ({stats.new_available})
+            </Link>
+          )}
           <Link to="/study" className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700">
-            Bắt đầu học
+            Ôn tập
           </Link>
         </div>
       </div>

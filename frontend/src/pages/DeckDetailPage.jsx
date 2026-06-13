@@ -27,6 +27,7 @@ export default function DeckDetailPage() {
   const [deleteCardId, setDeleteCardId] = useState(null);
   const [cardError, setCardError] = useState('');
   const [importPreviewData, setImportPreviewData] = useState(null);
+  const [lastImportCount, setLastImportCount] = useState(null);
   const fileRef = useRef();
 
   const load = () => {
@@ -77,8 +78,9 @@ export default function DeckDetailPage() {
   };
 
   const confirmImport = async () => {
-    await importCards(id, importPreviewData.file);
+    const res = await importCards(id, importPreviewData.file);
     setImportPreviewData(null);
+    setLastImportCount(res.data.imported);
     load();
   };
 
@@ -115,21 +117,43 @@ export default function DeckDetailPage() {
                 {memberName}: {deck.due_count} cần ôn · {deck.new_count} mới
               </span>
             ) : (
-              <span className="rounded-full bg-orange-100 px-2 py-0.5 text-orange-700">{deck.due_count} cần ôn</span>
+              <span className="rounded-full bg-orange-100 px-2 py-0.5 text-orange-700">
+                {deck.due_count} cần ôn · {deck.new_count} mới
+              </span>
             )}
           </div>
         </div>
         {!isAdminView && (
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
+            <Link
+              to={`/study/${id}?mode=new`}
+              className="rounded-lg border border-indigo-600 px-4 py-2 text-sm font-medium text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/20"
+            >
+              Học từ mới ({deck.new_count})
+            </Link>
             <Link
               to={`/study/${id}`}
               className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
             >
-              Học ngay
+              Ôn tập
             </Link>
           </div>
         )}
       </div>
+
+      {lastImportCount > 0 && (
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-green-200 bg-green-50 px-4 py-3 dark:border-green-800 dark:bg-green-900/20">
+          <p className="text-sm text-green-800 dark:text-green-200">
+            Đã import {lastImportCount} từ mới. Học ngay để ghi nhớ tốt hơn.
+          </p>
+          <Link
+            to={`/study/${id}?mode=new`}
+            className="rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700"
+          >
+            Học từ vừa nhập
+          </Link>
+        </div>
+      )}
 
       <div className="mb-6 flex flex-wrap gap-3">
         <button

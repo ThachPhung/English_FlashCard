@@ -1,10 +1,12 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
 
 class SessionCreate(BaseModel):
     deck_id: int | None = None
+    mode: Literal["all", "new_only"] = "all"
 
 
 class CardInSession(BaseModel):
@@ -27,6 +29,7 @@ class CardInSession(BaseModel):
 class SessionResponse(BaseModel):
     id: int
     deck_id: int | None
+    mode: str = "all"
     status: str
     total_cards: int
     completed_cards: int

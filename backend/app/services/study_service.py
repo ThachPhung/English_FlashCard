@@ -137,6 +137,41 @@ def _count_today_reviews(db: Session, user_id: int) -> int:
     )
 
 
+def get_new_cards_queue(
+    db: Session, user: User, deck_id: int | None = None, exclude_card_ids: set[int] | None = None
+) -> list[tuple[Card, UserCardProgress]]:
+    """Queue chỉ gồm thẻ NEW — không trộn thẻ cần ôn."""
+    exclude = exclude_card_ids or set()
+    settings = db.query(UserSettings).filter(UserSettings.user_id == user.id).first()
+    daily_new_limit = settings.daily_new_limit if settings else 20
+
+    deck_ids = [deck_id] if deck_id else _accessible_deck_ids(db, user)
+    if not deck_ids:
+        return []
+
+    deck = db.query(Deck).filter(Deck.id == deck_id).first() if deck_id else None
+    if deck:
+        daily_new_limit = deck.new_cards_per_day
+
+    today_new_done = _count_today_new(db, user.id)
+    new_remaining = max(0, daily_new_limit - today_new_done)
+
+    cards = db.query(Card).filter(Card.deck_id.in_(deck_ids), Card.is_deleted == False).all()
+
+    new_cards: list[tuple[Card, UserCardProgress]] = []
+    for card in cards:
+        if card.id in exclude:
+            continue
+        progress = _get_or_create_progress(db, user.id, card.id)
+        if progress.status == CardStatus.NEW:
+            new_cards.append((card, progress))
+
+    new_cards.sort(key=lambda x: x[0].created_at or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
+
+    db.commit()
+    return new_cards[:new_remaining]
+
+
 def get_study_queue(
     db: Session, user: User, deck_id: int | None = None, exclude_card_ids: set[int] | None = None
 ) -> list[tuple[Card, UserCardProgress]]:
@@ -207,6 +242,8 @@ def _get_session_main_queue(
 
     card_ids = _load_session_card_ids(session)
     if not card_ids:
+        if session.study_mode == "new_only":
+            return get_new_cards_queue(db, user, session.deck_id, exclude_card_ids=exclude)
         return get_study_queue(db, user, session.deck_id, exclude_card_ids=exclude)
 
     queue: list[tuple[Card, UserCardProgress]] = []
@@ -234,7 +271,9 @@ def _count_remaining_cards(
     return len(main_queue) + _requeue_remaining_count(pending, needs_good)
 
 
-def create_session(db: Session, user: User, deck_id: int | None = None) -> StudySession:
+def create_session(
+    db: Session, user: User, deck_id: int | None = None, mode: str = "all"
+) -> StudySession:
     active = (
         db.query(StudySession)
         .filter(StudySession.user_id == user.id, StudySession.status == SessionStatus.active)
@@ -244,7 +283,10 @@ def create_session(db: Session, user: User, deck_id: int | None = None) -> Study
         active.status = SessionStatus.abandoned
         active.ended_at = datetime.now(timezone.utc)
 
-    queue = get_study_queue(db, user, deck_id)
+    if mode == "new_only":
+        queue = get_new_cards_queue(db, user, deck_id)
+    else:
+        queue = get_study_queue(db, user, deck_id)
     card_ids = [card.id for card, _ in queue]
     session = StudySession(
         user_id=user.id,
@@ -252,6 +294,7 @@ def create_session(db: Session, user: User, deck_id: int | None = None) -> Study
         total_cards=len(queue),
         completed_cards=0,
         status=SessionStatus.active,
+        study_mode=mode,
         session_card_ids=json.dumps(card_ids),
     )
     db.add(session)

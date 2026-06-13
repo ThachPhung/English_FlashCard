@@ -1,7 +1,7 @@
 import enum
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Integer, Text
+from sqlalchemy import DateTime, Enum, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -27,5 +27,6 @@ class StudySession(Base):
     completed_cards: Mapped[int] = mapped_column(Integer, default=0)
     duration_seconds: Mapped[int] = mapped_column(Integer, default=0)
     status: Mapped[SessionStatus] = mapped_column(Enum(SessionStatus), default=SessionStatus.active)
+    study_mode: Mapped[str] = mapped_column(String(20), default="all")
     requeue_pending: Mapped[str | None] = mapped_column(Text, nullable=True, default="{}")
     session_card_ids: Mapped[str | None] = mapped_column(Text, nullable=True, default="[]")

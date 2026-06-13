@@ -76,8 +76,8 @@ def validate_import_rows(db: Session, deck_id: int, rows: list[dict]) -> list[di
     return results
 
 
-def import_cards(db: Session, deck_id: int, rows: list[dict], skip_duplicates: bool = True) -> int:
-    count = 0
+def import_cards(db: Session, deck_id: int, rows: list[dict], skip_duplicates: bool = True) -> list[int]:
+    imported_ids: list[int] = []
     existing_fronts = {
         c.front.lower()
         for c in db.query(Card).filter(Card.deck_id == deck_id, Card.is_deleted == False).all()
@@ -101,7 +101,8 @@ def import_cards(db: Session, deck_id: int, rows: list[dict], skip_duplicates: b
             tags=row.get("tags"),
         )
         db.add(card)
+        db.flush()
+        imported_ids.append(card.id)
         existing_fronts.add(front.lower())
-        count += 1
     db.commit()
-    return count
+    return imported_ids

@@ -33,9 +33,21 @@ def seed_admin():
         db.close()
 
 
+def _ensure_schema():
+    Base.metadata.create_all(bind=engine)
+    try:
+        with engine.connect() as conn:
+            conn.execute(
+                text("ALTER TABLE study_sessions ADD COLUMN study_mode VARCHAR(20) DEFAULT 'all'")
+            )
+            conn.commit()
+    except Exception:
+        pass
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    Base.metadata.create_all(bind=engine)
+    _ensure_schema()
     seed_admin()
     yield
 
