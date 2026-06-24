@@ -37,7 +37,7 @@ export default function StudyPage() {
   const [finishing, setFinishing] = useState(false);
   const [error, setError] = useState('');
   const [soundEnabled, setSoundEnabled] = useState(true);
-  const cardShownAt = useRef(Date.now());
+  const cardShownAt = useRef(0);
 
   useEffect(() => {
     getSettings()
@@ -121,7 +121,7 @@ export default function StudyPage() {
 
   const handleFlip = () => {
     if (!submitting && card) {
-      setShowAnswer((prev) => !prev);
+      setShowAnswer(true);
     }
   };
 
